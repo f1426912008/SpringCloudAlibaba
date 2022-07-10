@@ -1,0 +1,2 @@
+2022-07-04 00:00:05.531 INFO [MetricWriter] New metric file created: .\logs\sentinel-dashboard\sentinel-dashboard-1-8-1-metrics.log.2022-07-04
+2022-07-04 00:00:05.535 INFO [MetricWriter] New metric index file created: .\logs\sentinel-dashboard\sentinel-dashboard-1-8-1-metrics.log.2022-07-04.idx
