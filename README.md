@@ -210,17 +210,18 @@
        192.168.2.100:8849
        192.168.2.101:8850
        192.168.2.102:8851 
-      ```
+       ```
 
-    4. 数据库运行Nacos的sql脚本，创建数据库；
-
-    5. 修改启动脚本 startup.sh：
+    
+   4. 数据库运行Nacos的sql脚本，创建数据库；
    
+   5. 修改启动脚本 startup.sh：
+      
    * 启动方式为集群：`set MODE="cluster"` 
-       * 内存不足时 (此处虚拟机内存较小) ，修改小一些： `JAVA_OPT="${JAVA_OPT} -server -Xms512m -Xmx512m -Xmn256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=128m"`
-
-    6. 官方推荐，nginx作为反向代理：
-
+    * 内存不足时 (此处虚拟机内存较小) ，修改小一些： `JAVA_OPT="${JAVA_OPT} -server -Xms512m -Xmx512m -Xmn256m -XX:MetaspaceSize=64m -XX:MaxMetaspaceSize=128m"`
+   
+   6. 官方推荐，nginx作为反向代理：
+   
        * 配置 nginx.conf 配置文件：
    
          ```shell
@@ -236,8 +237,10 @@
              	# 反向代理的路径，如访问http://192.168.2.100:8848将均衡代理到对应的Nacos上
              	proxy_pass http://nacoscluster/naocs/;
              }
-       }
+         }
          ```
+   
+   
 
 
 
@@ -425,7 +428,7 @@
       }
       ```
 
-   4. 启动类开启Feign功能：==@EnableFeignClients==
+   4. 启动类开启Feign功能：==@EnableFeignClients==，添加在启动类或配置类上；
 
 2. #### Feign的自定义配置
 
@@ -719,7 +722,7 @@
 
 ********
 
-### 六、Sentinel分布式高可用组件
+### 六、Sentinel
 
 1. **说明文档**：https://github.com/alibaba/Sentinel
 
@@ -732,7 +735,7 @@ Sentinel 是面向分布式服务架构的流量控制组件，主要以**流量
 * 广泛的开源生态：
 * 完善的SPI扩展点：
 
-**Sentinel和hystrix对比：**
+**Sentinel**和**hystrix**对比：
 
 ![1653821090691](assets/1653821090691.png)
 
@@ -1286,7 +1289,9 @@ Sentinel 是面向分布式服务架构的流量控制组件，主要以**流量
        4. 在feign的接口类上，声明使用自己的异常类：
    
           ```java
-          @FeignClient(name = "stock-service", path = "/stock", fallback = FeignException.class)
+          @FeignClient(name = "stock-service", 
+                       path = "/stock", 
+                       fallback = FeignException.class)
           ```
    
    11. **Sentinel规则的持久化**（此处使用第三种模式：*拉模式*）：
@@ -1351,5 +1356,82 @@ Sentinel 是面向分布式服务架构的流量控制组件，主要以**流量
 
 
 
-### 七、Seata
+### 七、分布式事务Seata
 
+1. Seata官网：https://seata.apache.org/zh-cn/；
+
+2. 名词解释：
+
+   * **TM**：`Transaction Manager`，事务管理者。定义*全局事务*的范围，开始全局事务、提交或回滚；
+   * **RM**：`Resource Manager`，资源管理者。管理*分支事务*处理的资源，与 TC 交谈以注册分支事务和报告分支事务的状态，并驱动*分支事务*提交或回滚；
+   * **TC**：`Transaction Coordinator`，事务协调者。维护全局和分支事务的状态，驱动*全局事务*提交或回滚；
+
+3. 四种事务模式：
+
+   * **XA模式**：事务提交至事务协调者TC，由TC统一决定是否提交事务；
+
+   * **AT模式**：事务直接提交，并记录 `undo_log` 日志（SQL执行前后各一条），异常后根据日志回滚；
+
+   * **TCC模式**：自行决定事务的提交回滚策略，指定执行的方法；
+
+   * **Saga模式**：长事务解决方案，一种分布式异步事务。分两种实现：
+
+     * 状态机引擎：通过事件驱动的方法异步执行提高系统吞吐，可以实现服务编排需求；
+
+     * 基于注解和拦截器：开发简单、学习成本低；
+
+       
+
+   | 模式 |  一致性  |     隔离性     |                      侵入性                      | 性能 |                             场景                             |
+   | :--: | :------: | :------------: | :----------------------------------------------: | :--: | :----------------------------------------------------------: |
+   |  XA  |  强一致  |    完全隔离    |                        无                        |  差  |                对一致性、隔离性有高要求的业务                |
+   |  AT  |  弱一致  | 依赖全局锁隔离 |                        无                        |  好  |            基于关系型数据库的大多数分布式事务场景            |
+   | TCC  |  弱一致  |  资源预留隔离  | prepare<br/>commit<br/>cancel<br/>需编写三个接口 |  优  |   对性能要求较高的事务。<br/>有非关系型数据库要参与的事务    |
+   | Saga | 最终一致 |       无       |           需编写状态机、<br/>补偿业务            |  优  | 业务流程长、业务流程多，<br/>参与者包含其它公司遗留系统服务，<br/>无法提供 TCC 模式要求的三个接口 |
+
+   
+
+4. 设计问题处理：
+
+   * 脏写：事务回滚前，需校验数据库与记录日志是否相同，如果不同，说明出现了脏写，需人工处理；
+   * 允许空回滚：Try拥堵或其它原因未执行，Cancel执行了；
+   * 防悬挂控制：Cancel比Try先执行了，即允许空回滚，但要拒绝空回滚后的Try操作；
+   * 幂等控制：Try、Commit、Cancel要保证幂等性，即一次请求和多次请求对系统资源的影响是一致的；
+
+5. 使用Seata（摘自官网）：
+
+   * 基本使用：在需要开启分布式事务的方法上添加注解 `@GlobalTransactional` 即可；
+
+     ```java
+     @GlobalTransactional
+     public void purchase(String userId, String commodityCode, int orderCount) {
+         ......
+     }
+     ```
+
+     
+
+   * Seata防止脏写：
+
+     * 方法一：
+
+       ```java
+       @GlobalTransactional
+       @Transactional
+       public boolean updateA(DTO dto) {
+           serviceA.update(dto.getA());
+       }
+       ```
+
+       
+
+     * 方法二：
+
+       ```java
+       @GlobalLock
+       @Transactional
+       public boolean updateA(DTO dto) {
+           serviceA.selectForUpdate(dto.getA());
+           serviceA.update(dto.getA());
+       }
+       ```
